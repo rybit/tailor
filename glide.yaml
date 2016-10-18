@@ -1,5 +1,4 @@
 package: github.com/rybit/natail
 import:
 - package: github.com/nats-io/nats
-  version: v1.2.0
 - package: github.com/spf13/cobra

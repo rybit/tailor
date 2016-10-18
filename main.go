@@ -25,6 +25,7 @@ var tlsCACert string
 var debugEnabled bool
 var quietOutput bool
 var tlsEnabled bool
+var useChannel bool
 
 func main() {
 	rootCmd := cobra.Command{
@@ -39,6 +40,7 @@ func main() {
 	rootCmd.Flags().StringVar(&tlsCACert, "tlscacert", "", "Client certificate CA for verification")
 	rootCmd.Flags().BoolVarP(&debugEnabled, "debug", "d", false, "enable debug logging")
 	rootCmd.Flags().BoolVarP(&quietOutput, "quiet", "q", false, "silence the actual printing of messages")
+	rootCmd.Flags().BoolVarP(&useChannel, "channel", "c", false, "use a channel subscription")
 
 	rootCmd.Flags().StringSliceP("servers", "s", []string{"localhost:4222"}, "Which servers to use")
 
@@ -71,13 +73,6 @@ func run(cmd *cobra.Command, args []string) {
 		nc, err = nats.Connect(serverString)
 	}
 
-	debug("subscribing to subject: " + subject)
-	sub, err := nc.SubscribeSync(subject)
-	if err != nil {
-		log.Fatal("Failed to subscribe to " + subject + " because of " + err.Error())
-	}
-	defer sub.Unsubscribe()
-
 	var msgsRx int64
 
 	sigs := make(chan os.Signal)
@@ -88,24 +83,44 @@ func run(cmd *cobra.Command, args []string) {
 		os.Exit(0)
 	}()
 
+	debug("subscribing to subject: " + subject)
 	if useChannel {
+		ch := make(chan *nats.Msg)
+		sub, err := nc.ChanSubscribe(subject, ch)
+		if err != nil {
+			log.Fatal("Failed to subscribe to " + subject + " because of " + err.Error())
+		}
+		defer sub.Unsubscribe()
 
+		for msg := range ch {
+			msgsRx += 1
+			handleMsg(msg, msgsRx)
+		}
 	} else {
+		sub, err := nc.SubscribeSync(subject)
+		if err != nil {
+			log.Fatal("Failed to subscribe to " + subject + " because of " + err.Error())
+		}
+		defer sub.Unsubscribe()
+
 		for {
 			msg, err := sub.NextMsg(time.Hour)
 			if err != nil {
 				log.Fatal("Problem waiting for message: " + err.Error())
 			}
 			msgsRx += 1
-			if quietOutput {
-				fmt.Printf("Messages Received: %d\r", msgsRx)
-				if msgsRx%100000 == 0 {
-					fmt.Printf("Messages Received: %d\n", msgsRx)
-				}
-			} else {
-				fmt.Println(string(msg.Data))
-			}
+			handleMsg(msg, msgsRx)
 		}
+	}
+}
+func handleMsg(msg *nats.Msg, msgsRx int64) {
+	if quietOutput {
+		fmt.Printf("Messages Received: %d\r", msgsRx)
+		if msgsRx%100000 == 0 {
+			fmt.Printf("Messages Received: %d\n", msgsRx)
+		}
+	} else {
+		fmt.Println(string(msg.Data))
 	}
 }
 
