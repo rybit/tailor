@@ -1,0 +1,16 @@
+hash: aef0901336c4660de4b59ad48620b6c1a3ee556c4115bb956a3c4007a81dcd1f
+updated: 2016-10-18T14:08:32.278097195-07:00
+imports:
+- name: github.com/inconshreveable/mousetrap
+  version: 76626ae9c91c4f2a10f34cad8ce83ea42c93bb75
+- name: github.com/nats-io/nats
+  version: fc85f44c1659ab6610d76fd6bd0e44ad2cadf697
+  subpackages:
+  - encoders/builtin
+- name: github.com/nats-io/nuid
+  version: 289cccf02c178dc782430d534e3c1f5b72af807f
+- name: github.com/spf13/cobra
+  version: 856b96dcb49d6427babe192998a35190a12c2230
+- name: github.com/spf13/pflag
+  version: 0e7ce96826adebbd2556517e0a993030ef3a0c51
+testImports: []
