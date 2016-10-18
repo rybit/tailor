@@ -68,7 +68,7 @@ func run(cmd *cobra.Command, args []string) {
 			log.Fatal("Failed to load certificate: " + err.Error())
 		}
 
-		nc, err = nats.Connect(serverString, nats.Secure(tlsConfig))
+		nc, err = nats.Connect(serverString, nats.Secure(tlsConfig), nats.ErrorHandler(handleError))
 	} else {
 		nc, err = nats.Connect(serverString)
 	}
@@ -85,7 +85,7 @@ func run(cmd *cobra.Command, args []string) {
 
 	debug("subscribing to subject: " + subject)
 	if useChannel {
-		ch := make(chan *nats.Msg)
+		ch := make(chan *nats.Msg, 100000)
 		sub, err := nc.ChanSubscribe(subject, ch)
 		if err != nil {
 			log.Fatal("Failed to subscribe to " + subject + " because of " + err.Error())
@@ -102,7 +102,9 @@ func run(cmd *cobra.Command, args []string) {
 			log.Fatal("Failed to subscribe to " + subject + " because of " + err.Error())
 		}
 		defer sub.Unsubscribe()
-
+		if err := sub.SetPendingLimits(-1, -1); err != nil {
+			log.Fatal("Failed to unlimit subscription")
+		}
 		for {
 			msg, err := sub.NextMsg(time.Hour)
 			if err != nil {
@@ -113,11 +115,16 @@ func run(cmd *cobra.Command, args []string) {
 		}
 	}
 }
+
+func handleError(conn *nats.Conn, sub *nats.Subscription, err error) {
+	fmt.Println("error: " + err.Error())
+}
+
 func handleMsg(msg *nats.Msg, msgsRx int64) {
 	if quietOutput {
 		fmt.Printf("Messages Received: %d\r", msgsRx)
-		if msgsRx%100000 == 0 {
-			fmt.Printf("Messages Received: %d\n", msgsRx)
+		if msgsRx%100000 == 0 || msgsRx == 1 {
+			debug(fmt.Sprintf("Messages Received: %d", msgsRx))
 		}
 	} else {
 		fmt.Println(string(msg.Data))
