@@ -88,19 +88,23 @@ func run(cmd *cobra.Command, args []string) {
 		os.Exit(0)
 	}()
 
-	for {
-		msg, err := sub.NextMsg(time.Hour)
-		if err != nil {
-			log.Fatal("Problem waiting for message: " + err.Error())
-		}
-		msgsRx += 1
-		if quietOutput {
-			fmt.Printf("Messages Received: %d\r", msgsRx)
-			if msgsRx%100000 == 0 {
-				fmt.Printf("Messages Received: %d\n", msgsRx)
+	if useChannel {
+
+	} else {
+		for {
+			msg, err := sub.NextMsg(time.Hour)
+			if err != nil {
+				log.Fatal("Problem waiting for message: " + err.Error())
 			}
-		} else {
-			fmt.Println(string(msg.Data))
+			msgsRx += 1
+			if quietOutput {
+				fmt.Printf("Messages Received: %d\r", msgsRx)
+				if msgsRx%100000 == 0 {
+					fmt.Printf("Messages Received: %d\n", msgsRx)
+				}
+			} else {
+				fmt.Println(string(msg.Data))
+			}
 		}
 	}
 }
