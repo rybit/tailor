@@ -1,19 +1,16 @@
 package main
 
 import (
-	"log"
-	"strings"
-
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
 	"io/ioutil"
-
-	"time"
-
+	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/nats-io/nats"
 	"github.com/spf13/cobra"
@@ -26,11 +23,13 @@ var debugEnabled bool
 var quietOutput bool
 var tlsEnabled bool
 var useChannel bool
+var BuffSize int
+var MsgSize int
 
 func main() {
 	rootCmd := cobra.Command{
-		Short: "natail",
-		Long:  "natail subject",
+		Short: "tailor",
+		Long:  "tailor subject [group]",
 		Run:   run,
 	}
 
@@ -41,6 +40,8 @@ func main() {
 	rootCmd.Flags().BoolVarP(&debugEnabled, "debug", "d", false, "enable debug logging")
 	rootCmd.Flags().BoolVarP(&quietOutput, "quiet", "q", false, "silence the actual printing of messages")
 	rootCmd.Flags().BoolVarP(&useChannel, "channel", "c", false, "use a channel subscription")
+	rootCmd.Flags().IntVarP(&BuffSize, "buff", "b", 0, "a buffer size for the channel")
+	rootCmd.Flags().IntVarP(&MsgSize, "msg", "m", 1000, "the size of a message in bytes")
 
 	rootCmd.Flags().StringSliceP("servers", "s", []string{"localhost:4222"}, "Which servers to use")
 
@@ -50,10 +51,16 @@ func main() {
 }
 
 func run(cmd *cobra.Command, args []string) {
-	if len(args) != 1 {
+	var err error
+
+	if len(args) < 1 {
 		log.Fatal("Must provide a subject")
 	}
 	subject := args[0]
+	group := ""
+	if len(args) == 2 {
+		group = args[1]
+	}
 
 	servers, err := cmd.Flags().GetStringSlice("servers")
 	if err != nil {
@@ -84,11 +91,16 @@ func run(cmd *cobra.Command, args []string) {
 	}()
 
 	debug("subscribing to subject: " + subject)
+	var sub *nats.Subscription
 	if useChannel {
-		ch := make(chan *nats.Msg, 100000)
-		sub, err := nc.ChanSubscribe(subject, ch)
+		ch := make(chan *nats.Msg, BuffSize)
+		if group != "" {
+			sub, err = nc.ChanQueueSubscribe(subject, group, ch)
+		} else {
+			sub, err = nc.ChanSubscribe(subject, ch)
+		}
 		if err != nil {
-			log.Fatal("Failed to subscribe to " + subject + " because of " + err.Error())
+			log.Fatalf("Failed to subscribe to %s[%s] because of %s", subject, group, err)
 		}
 		defer sub.Unsubscribe()
 
@@ -97,13 +109,17 @@ func run(cmd *cobra.Command, args []string) {
 			handleMsg(msg, msgsRx)
 		}
 	} else {
-		sub, err := nc.SubscribeSync(subject)
+		if group != "" {
+			sub, err = nc.QueueSubscribeSync(subject, group)
+		} else {
+			sub, err = nc.SubscribeSync(subject)
+		}
 		if err != nil {
-			log.Fatal("Failed to subscribe to " + subject + " because of " + err.Error())
+			log.Fatalf("Failed to subscribe to %s[%s] because of %s", subject, group, err)
 		}
 		defer sub.Unsubscribe()
-		if err := sub.SetPendingLimits(-1, -1); err != nil {
-			log.Fatal("Failed to unlimit subscription")
+		if err := sub.SetPendingLimits(BuffSize, MsgSize*BuffSize); err != nil {
+			log.Fatalf("Failed to update sub limits to msg(%d), bytes(%d)", BuffSize, MsgSize)
 		}
 		for {
 			msg, err := sub.NextMsg(time.Hour)
